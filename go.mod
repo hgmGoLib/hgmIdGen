@@ -1,3 +1,3 @@
 module github.com/hgmGoLib/hgmIdGen
 
-go 1.24
+go 1.19

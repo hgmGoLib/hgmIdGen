@@ -82,8 +82,10 @@ hgmIdGen.MinSecureIdAtTime(t)   // 某毫秒时刻的最小 NewSecureId()
 
 选型、排错、或依赖某个"看起来成立"的性质(排序、递增、抗碰撞)之前,请先读这两份文档:
 
-* [`doc/implDetail.txt`](doc/implDetail.txt) — 逐字段二进制布局:三段式结构(6 字节时间 + 1\~4 字节变长递增 + 剩余强随机)、变长编码规则、base32 长度换算、各函数长度用途速查.
-* [`doc/edgeCase.txt`](doc/edgeCase.txt) — 设计前提与边界情况:递增计数器每毫秒 `2^30` 上限与溢出回绕、变长递增挤占随机段导致熵随负载下降、时钟回拨破坏递增/排序、排序保证的成立前提、`Min*AtTime` 只能当下界用、三函数共享同一全局递增计数器、randFast 随机源性质、时间上限、校验函数只做格式校验等.
+* [`doc/implDetail.md`](doc/implDetail.md) — 逐字段二进制布局:三段式结构(6 字节时间 + 1\~4 字节变长递增 + 剩余强随机)、变长编码规则、base32 长度换算、各函数长度用途速查.
+* [`doc/edgeCase.md`](doc/edgeCase.md) — 设计前提与边界情况:递增计数器每毫秒 `2^30` 上限与溢出回绕、变长递增挤占随机段导致熵随负载下降、时钟回拨破坏递增/排序、排序保证的成立前提、`Min*AtTime` 只能当下界用、三函数共享同一全局递增计数器、randFast 随机源性质、时间上限、校验函数只做格式校验等.
+
+* [`faq.md`](faq.md) — 对一次设计 review 的逐条回复:时间精度/counter 取舍、IsValidId 语义与 canonical 边界、命名风格、格式长期稳定性、纯随机 token 缺口等设计取舍的说明.
 
 也可直接阅读对应源码文件 (`Id_*.go` / `SecureId_*.go` / `IdBinary_*.go`).
 

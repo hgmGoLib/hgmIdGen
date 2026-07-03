@@ -1,0 +1,78 @@
+实现细节 (逐字段二进制布局)
+==========================
+本文件描述 hgmIdGen 每种 id 的二进制内部结构.
+只涉及本库实际提供的函数: NewId / NewIdBinary / NewSecureId.
+(旧 hgmLib/hgmIdGen 里的 NewIdInPath 路径 id 方案在本库里没有实现, 不在此描述.)
+
+
+公共部分: 三段式结构
+====================
+NewId / NewSecureId / NewIdBinary 的二进制都是同一个三段式:
+
+    [ 6 字节 毫秒时间 ] [ 1-4 字节 变长递增 ] [ 剩余字节 强随机 ]
+
+三者只有总长度和随机段长度不同, 时间段和递增段的编码方式完全一致.
+对应源码: Id_new.go 的 fillIdBytes / encodeVarLenUint32 / nextId.
+
+
+第 1 段: 6 字节毫秒时间
+======================
+* 取 time.Now().UnixMilli(), 即 unix 毫秒时间戳.
+* 大端(高位在前)写入 6 个字节, 即保留低 48 位.
+* 6 字节 = 48 bit, 2^48 毫秒 约等于 8925 年, 从 1970 年起算.
+* 大端写在最前面, 是为了让字符串排序 == 时间排序 (见 edgeCase.txt 的排序保证).
+* 反解: ParseTimeFromId / ParseTimeFromSecureId 只读前 6 字节还原毫秒时间.
+
+
+第 2 段: 1-4 字节变长递增
+========================
+* 当前进程内挂锁顺序递增的计数器. 见 Id_new.go 的 nextId.
+* 计数器规则:
+    * 每次调用 +1.
+    * 毫秒时间和上次不同时(lastT != t), 计数器重置为 0.
+    * 注意: 是"不同"就重置, 不是"变大"才重置. 时钟回拨也会触发重置, 见 edgeCase.txt.
+* 变长编码 (encodeVarLenUint32):
+    * 第 1 个字节的高 2 位表示后面总共有几个字节.
+        * 00 -> 1 字节, 承载 6 bit,  值域 0        ~ 63
+        * 01 -> 2 字节, 承载 14 bit, 值域 64       ~ 16383
+        * 10 -> 3 字节, 承载 22 bit, 值域 16384    ~ 4194303
+        * 11 -> 4 字节, 承载 30 bit, 值域 4194304  ~ 1073741823
+    * 低位存放递增数值本身.
+    * 最大递增值 = 2^30 - 1 = 1073741823.
+* 高 2 位既是长度标记又天然随数值增大而增大, 所以变长编码不破坏排序 (见 edgeCase.txt).
+
+
+第 3 段: 剩余字节强随机
+======================
+* 来自 crypto/rand, 经 zlib_hgmRandFast.go 的 randFast_t 做 512 字节批量缓存后取出.
+* 批量缓存只是减少 rand.Read 调用次数, 不改变随机来源, 见 edgeCase.txt 的安全性说明.
+* 随机段长度 = 总长度 - 6 - 递增段长度, 所以随机段是"变长"的:
+    * NewId       总 18 字节 -> 随机段 8 ~ 11 字节 (递增段占 4~1 字节)
+    * NewSecureId 总 26 字节 -> 随机段 16 ~ 19 字节 (递增段占 4~1 字节)
+* NewSecureId 的随机段更长, 抗碰撞更强, 这是它和 NewId 唯一的实质区别.
+
+
+base32 编码
+===========
+* 编码表 (zlib_hgmEncodeB32.go): "123456789abcdefghjkmnpqrstuvwxyz"
+    * 去掉了容易混淆的字符 (没有 0 o l i 等).
+    * 字符按 ascii 从小到大排列, 使编码结果的字符串排序 == 原始二进制字节排序.
+* 无 padding (NoPadding).
+* 长度换算:
+    * 18 字节 = 144 bit, 144 / 5 = 28.8 -> 固定 29 字符 (NewId)
+    * 26 字节 = 208 bit, 208 / 5 = 41.6 -> 固定 42 字符 (NewSecureId)
+
+
+各函数长度与用途速查
+====================
+NewId()          -> 二进制 18 字节 -> 字符串固定 29 字符, 一般数据库主键
+NewSecureId()    -> 二进制 26 字节 -> 字符串固定 42 字符, sessionId/accessToken
+NewIdBinary(dst) -> 二进制 18 字节, 方案同 NewId, 只是不做 base32 编码
+IdBinaryToId     -> 18 字节 <-> 29 字符, 无损互转 (输入长度不是 18 报错)
+IdToIdBinary     -> 29 字符 <-> 18 字节, 无损互转 (长度或字符非法报错)
+IsValidId        -> 长度必须 29 且字符都在 base32 表内
+IsValidSecureId  -> 长度必须 42 且字符都在 base32 表内
+ParseTimeFromId       -> 从前 6 字节解析毫秒时间, 失败返回 time.Time{}
+ParseTimeFromSecureId -> 从前 6 字节解析毫秒时间, 失败返回 time.Time{}
+MinIdAtTime(t)        -> 该毫秒时刻最小的 NewId 字符串 (递增段+随机段全 0)
+MinSecureIdAtTime(t)  -> 该毫秒时刻最小的 NewSecureId 字符串 (递增段+随机段全 0)

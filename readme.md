@@ -78,7 +78,14 @@ hgmIdGen.MinSecureIdAtTime(t)   // 某毫秒时刻的最小 NewSecureId()
 * **`NewSecureId()` (26 字节)**: 结构同上,但随机段扩到 16\~19 字节,抗碰撞更强,base32 编码为 42 字符.
 * **base32 字符表**: `123456789abcdefghjkmnpqrstuvwxyz`,去掉易混淆字符,且按 ascii 递增,保证编码结果可直接字符串排序.
 
-更细的逐字段说明可直接阅读对应源码文件 (`Id_*.go` / `SecureId_*.go` / `IdBinary_*.go`).
+## 设计须知与极限情况
+
+选型、排错、或依赖某个"看起来成立"的性质(排序、递增、抗碰撞)之前,请先读这两份文档:
+
+* [`doc/implDetail.txt`](doc/implDetail.txt) — 逐字段二进制布局:三段式结构(6 字节时间 + 1\~4 字节变长递增 + 剩余强随机)、变长编码规则、base32 长度换算、各函数长度用途速查.
+* [`doc/edgeCase.txt`](doc/edgeCase.txt) — 设计前提与边界情况:递增计数器每毫秒 `2^30` 上限与溢出回绕、变长递增挤占随机段导致熵随负载下降、时钟回拨破坏递增/排序、排序保证的成立前提、`Min*AtTime` 只能当下界用、三函数共享同一全局递增计数器、randFast 随机源性质、时间上限、校验函数只做格式校验等.
+
+也可直接阅读对应源码文件 (`Id_*.go` / `SecureId_*.go` / `IdBinary_*.go`).
 
 ## License
 
